@@ -1,0 +1,207 @@
+<!doctype html>
+<html>
+<head>
+  <script src="firebase.js"></script>
+  <title>Register - SmartSeat</title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .container {
+      width: 500px;
+      text-align: center;
+    }
+    .logo {
+      font-size: 32px;
+      font-weight: bold;
+      margin-bottom: 28px;
+      color: #2f88c5;
+    }
+    form {
+      background: #f5f5f5;
+      padding: 48px 36px;
+      border-radius: 16px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+    }
+    input, select {
+      width: 100%;
+      padding: 14px;
+      margin: 18px 0;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      box-sizing: border-box;
+      font-size: 16px;
+    }
+    .role-box {
+      text-align: left;
+      margin-bottom: 5px;
+      font-size: 14px;
+      font-weight: bold;
+      color: #333;
+    }
+    .error {
+      color: red;
+      font-size: 13px;
+      text-align: left;
+      margin-bottom: 8px;
+      display: none;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(90deg, #2f88c5, #1a6fb3);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: 0.2s;
+      margin-top: 22px;
+    }
+    button:hover {
+      background: linear-gradient(90deg, #1f74b0, #155d93);
+      box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+    }
+    p {
+      font-size: 15px;
+      margin-top: 28px;
+      color: #2f88c5;
+      font-weight: bold;
+      position: relative;
+      display: inline-block;
+    }
+    p::before,
+    p::after {
+      content: "------";
+      color: #bbb;
+      margin: 0 10px;
+      font-weight: normal;
+    }
+    a {
+      color: #2f88c5;
+      text-decoration: none;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="logo">SmartSeat</div>
+
+    <form id="registerForm" novalidate>
+      <div class="role-box">Select Account Type</div>
+      <select id="role">
+        <option value="student">Student</option>
+        <option value="teacher">Teacher</option>
+      </select>
+
+      <input type="text" id="name" placeholder="Full Name">
+      <div class="error" id="nameError">Please enter your full name.</div>
+
+      <input type="text" id="email" placeholder="Email">
+      <div class="error" id="emailError">Please enter a valid email.</div>
+
+      <input type="password" id="password" placeholder="Password (min 6 chars)">
+      <div class="error" id="passwordError">Password must be at least 4 characters.</div>
+
+      <button type="submit">Create Account</button>
+    </form>
+
+    <p><a href="login.html">Back to Login</a></p>
+  </div>
+
+  <script>
+    const form = document.getElementById("registerForm");
+
+    const emailField = document.getElementById("email");
+    const roleField = document.getElementById("role");
+
+    // Auto-fill email prefix hint
+    roleField.addEventListener("change", () => {
+      if (roleField.value === "student") {
+        emailField.placeholder = "Email (Must start with S...)";
+      } else {
+        emailField.placeholder = "Email (Must start with T...)";
+      }
+    });
+
+    form.addEventListener("submit", async function(e) {
+      e.preventDefault();
+
+      let valid = true;
+
+      const name = document.getElementById("name");
+      const email = document.getElementById("email");
+      const password = document.getElementById("password");
+
+      const nameError = document.getElementById("nameError");
+      const emailError = document.getElementById("emailError");
+      const passwordError = document.getElementById("passwordError");
+
+      // Validation
+      if (!name.value.trim()) {
+        nameError.style.display = "block";
+        valid = false;
+      } else nameError.style.display = "none";
+
+      // Email rule: student → S..., teacher → T...
+      const emailValue = email.value.trim();
+
+      const studentPattern = /^S[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const teacherPattern = /^T[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (roleField.value === "student" && !studentPattern.test(emailValue)) {
+        emailError.textContent = "Student email must start with S";
+        emailError.style.display = "block";
+        valid = false;
+      } else if (roleField.value === "teacher" && !teacherPattern.test(emailValue)) {
+        emailError.textContent = "Teacher email must start with T";
+        emailError.style.display = "block";
+        valid = false;
+      } else {
+        emailError.style.display = "none";
+      }
+
+      if (!password.value.trim() || password.value.trim().length < 4) {
+        passwordError.style.display = "block";
+        valid = false;
+      } else passwordError.style.display = "none";
+
+      if (!valid) return;
+
+      try {
+        // Create Firebase Auth account
+        const userCredential = await auth.createUserWithEmailAndPassword(
+          emailValue,
+          password.value.trim()
+        );
+
+        const user = userCredential.user;
+
+        // Write profile into Firestore
+        await db.collection("users").doc(user.uid).set({
+          uid: user.uid,
+          name: name.value.trim(),
+          email: emailValue,
+          type: roleField.value,  // "student" or "teacher"
+          createdAt: new Date()
+        });
+
+        alert("Account created successfully! Please login.");
+        window.location.href = "login.html";
+
+      } catch (err) {
+        console.error(err);
+        alert("Registration failed: " + err.message);
+      }
+    });
+  </script>
+</body>
+</html>

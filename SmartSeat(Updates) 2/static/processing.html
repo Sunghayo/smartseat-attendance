@@ -1,0 +1,48 @@
+<script>
+  /** 
+   * Processing reservation:
+   * 1. Read reservation data from localStorage
+   * 2. Save into Firestore (with building + room + seats array)
+   * 3. Redirect to success page
+   */
+
+  const db = firebase.firestore();
+
+  // Load reservation object
+  const reservation = JSON.parse(localStorage.getItem("latestReservation"));
+  const email = localStorage.getItem("loggedEmail");
+
+  // If missing → redirect
+  if (!reservation || !email) {
+    alert("Reservation data missing. Please book again.");
+    window.location = "select_building.html";
+  }
+
+  /**
+   reservation = {
+     seats: ["A1","A2"],     ← array (seat IDs)
+     building: "Building A",
+     room: "Room 101",
+     time: "2025-11-13 14:00"
+   }
+  */
+
+  db.collection("reservations").add({
+    email: email,
+    seats: reservation.seats,             // store as array
+    seat: reservation.seats.join(", "),   // human readable
+    building: reservation.building,
+    room: reservation.room,
+    time: reservation.time,
+    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+  })
+  .then(() => {
+    console.log("Reservation saved to Firestore.");
+    setTimeout(() => window.location = "success.html", 1000);
+  })
+  .catch(error => {
+    console.error("Error saving reservation:", error);
+    alert("Failed to process reservation. Please try again.");
+    window.location = "select_building.html";
+  });
+</script>
