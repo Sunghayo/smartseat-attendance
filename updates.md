@@ -1,4 +1,4 @@
-# SmartSeat Project – Progress Summary (1 min Presentation)
+# SmartSeat Project – Progress Summary 
 
 ## 1) Firebase Setup Completed
 - Firebase project + web app created  
