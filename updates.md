@@ -39,7 +39,7 @@
 ---
 
 ## 5) Deployment
-- Firebase Hosting deployed  
+- Firebase Hosting deployed  (https://smartseat-attendance.vercel.app/)
 - Vercel deployed  
 <img width="1235" height="503" alt="스크린샷 2025-11-17 11 03 04" src="https://github.com/user-attachments/assets/7c2f425a-f98b-4f65-873b-be2e2fd68072" />
 
