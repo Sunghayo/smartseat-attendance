@@ -1,4 +1,4 @@
-# 📌 SmartSeat System – Weekly Improvements Summary
+# SmartSeat System
 
 
 ---
