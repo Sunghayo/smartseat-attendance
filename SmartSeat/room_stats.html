@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Room Stats - SmartSeat</title>
+
+  <script src="firebase.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root { --pad: 16px; --radius: 14px; --fg:#111; --muted:#6b7280; }
+    body {
+      margin: 0; color: var(--fg); background: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    header { display:flex; align-items:center; gap:10px; padding: var(--pad); }
+    header .back {
+      width:28px; height:28px; border-radius:50%; border:1px solid #ddd;
+      display:grid; place-items:center; cursor:pointer;
+    }
+
+    h1 { font-size:22px; margin-left:6px; }
+
+    .legend { font-size:12px; color:var(--muted); display:flex; gap:14px; margin:6px var(--pad); }
+    .legend span { display:flex; align-items:center; gap:6px; }
+    .dot { width:10px; height:10px; border-radius:2px; }
+    .green { background:#22c55e; }
+    .yellow { background:#f59e0b; }
+    .gray { background:#e5e7eb; }
+
+    main { padding: var(--pad); display:flex; flex-direction:column; gap:18px; }
+
+    .card {
+      border:1px solid #eee; border-radius:var(--radius); padding:var(--pad);
+      box-shadow:0 1px 2px rgba(0,0,0,.05);
+      background:#fff;
+      transition: background 0.3s, border-color 0.3s;
+    }
+
+    .row { display:flex; gap:16px; align-items:flex-start; }
+
+    .grow { flex:1; padding-left:18px; }
+
+    .kpi { display:flex; gap:16px; margin-bottom:8px; color:var(--muted); }
+    .kpi strong { color:#111; font-size:18px; margin-right:4px; }
+
+    #donut {
+      width: 240px !important;
+      height: 240px !important;
+      max-width: 240px;
+      aspect-ratio: 1/1;
+    }
+
+    #enlargedCanvas {
+      background: #fff;
+    }
+
+    #line { max-width:360px; height:180px; }
+
+    #modalOverlay {
+      display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,.85); justify-content:center; align-items:center;
+      z-index:9999;
+    }
+    #modalContent { max-width:90%; max-height:90%; }
+    #modalContent canvas { width:100%; }
+
+    body.night-mode {
+      background:#222;
+      color:#eee;
+    }
+    body.night-mode .legend span,
+    body.night-mode h1 { color:#ccc; }
+    body.night-mode .card {
+      background:#333; border-color:#444;
+      box-shadow: inset 0 0 8px rgba(0,0,0,0.4);
+    }
+
+    .two-col {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .upload-area {
+      border: 2px dashed #93c5fd;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 16px;
+      transition: 0.25s;
+    }
+    .upload-area:hover { background: #f0f8ff; }
+    .upload-btn {
+      background: #3b82f6;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 10px;
+      display: inline-block;
+      margin-top: 12px;
+      font-weight: 600;
+    }
+    #canvas {
+      max-width: 100%;
+      margin-top: 16px;
+      border-radius: 6px;
+      border: 2px solid #e0e7ff;
+    }
+
+    .detect-btn {
+      width: 100%;
+      padding: 14px 0;
+      font-size: 17px;
+      font-weight: 600;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: white;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+      transition: 0.25s;
+    }
+    .detect-btn:hover:not([disabled]) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(37, 99, 235, 0.5);
+    }
+    .detect-btn:disabled {
+      background: #9ca3af;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+
+    .theme-switch {
+      position: relative;
+      width: 52px;
+      height: 28px;
+      display: inline-block;
+      margin-left: 12px;
+    }
+    .theme-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0;
+      right: 0; bottom: 0;
+      background-color: #bbb;
+      transition: 0.3s;
+      border-radius: 34px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 22px; width: 22px;
+      left: 3px; bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #4f46e5;
+    }
+    input:checked + .slider:before {
+      transform: translateX(24px);
+    }
+
+    .attendance-settings {
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .attendance-settings-row {
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      align-items:center;
+      margin-top:6px;
+    }
+    .attendance-settings input,
+    .attendance-settings select {
+      padding:6px 8px;
+      border-radius:6px;
+      border:1px solid #d1d5db;
+      min-width:120px;
+      font-size: 14px;
+    }
+    .attendance-settings button {
+      padding:6px 10px;
+      border-radius:6px;
+      border:1px solid #2563eb;
+      background:#2563eb;
+      color:#fff;
+      cursor:pointer;
+      font-size:13px;
+    }
+    .attendance-settings-code {
+      font-weight:600;
+      color:#111;
+    }
+
+    #studentCard { margin-top: 4px; }
+    .student-table {
+      width:100%;
+      border-collapse:collapse;
+      margin-top:8px;
+      font-size:14px;
+    }
+    .student-table th,
+    .student-table td {
+      border:1px solid #e5e7eb;
+      padding:6px 8px;
+      text-align:left;
+    }
+    .student-table th {
+      background:#f9fafb;
+      font-weight:600;
+    }
+    .student-table select {
+      padding:4px 6px;
+      border-radius:4px;
+      border:1px solid #d1d5db;
+      font-size:13px;
+    }
+    .student-table-footer {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      margin-top:8px;
+    }
+    #saveAllBtn {
+      padding:6px 12px;
+      border-radius:6px;
+      border:1px solid #2563eb;
+      background:#2563eb;
+      color:#fff;
+      cursor:pointer;
+      font-size:13px;
+    }
+    #saveAllBtn:hover {
+      background:#1d4ed8;
+    }
+    .student-table small {
+      color:#6b7280;
+      font-size:12px;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="back" onclick="history.back()">←</div>
+    <h1 id="roomTitle">Room Stats</h1>
+
+    <label class="theme-switch">
+      <input type="checkbox" id="toggleTheme">
+      <span class="slider"></span>
+    </label>
+  </header>
+
+  <div class="legend">
+    <span><i class="dot gray"></i> empty(<span id="emptyCountLegend">0</span>)</span>
+    <span><i class="dot green"></i> on-time(<span id="onTimeCountLegend">0</span>)</span>
+    <span><i class="dot yellow"></i> late(<span id="lateCountLegend">0</span>)</span>
+  </div>
+
+  <main>
+    <section class="card">
+      <div class="row">
+        <canvas id="donut" width="360" height="360"></canvas>
+
+        <div class="grow">
+          <div class="label">Attendance</div>
+
+          <div class="kpi">
+            <div><strong id="occupancyPct">--%</strong> Occupancy</div>
+            <div><strong id="absencePct">0</strong> Absence</div>
+          </div>
+
+          <div class="kpi">
+            <div><strong id="onTimeCount">0</strong> On-time</div>
+            <div><strong id="lateCount">0</strong> Late</div>
+            <div><strong id="emptyCount">0</strong> Empty</div>
+          </div>
+
+          <div class="kpi">
+            <div><strong id="totalCount">0</strong> Total</div>
+          </div>
+
+          <button id="refreshButton">Refresh</button>
+
+          <div class="attendance-settings">
+            <div class="attendance-settings-row">
+              <span>Date:</span>
+              <select id="dateSelect"></select>
+            </div>
+
+            <div style="margin-top:8px;">Attendance Code for this room & date</div>
+            <div class="attendance-settings-row">
+              <input id="attendanceCodeInput" placeholder="e.g. ABC123" />
+              <button id="saveCodeBtn">Save Code</button>
+              <span>Current code: <span id="currentCode" class="attendance-settings-code">None</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="two-col">
+      <section class="card" style="flex:1;">
+        <div class="label">Occupancy Trend (Mon–Fri)</div>
+        <canvas id="line" width="360" height="180"></canvas>
+      </section>
+
+      <section class="card" style="flex:1;">
+        <div class="label">Photo Detection</div>
+
+        <div class="upload-area" id="uploadArea">
+          <p style="margin:10px 0;color:#64748b;">
+            Upload a classroom photo
+          </p>
+          <div class="upload-btn">Choose File</div>
+          <div id="fileName" style="margin-top:8px;color:#1e40af;">No file selected</div>
+          <input type="file" id="imgUpload" accept="image/*" style="display:none;">
+        </div>
+
+        <button id="detectBtn" class="detect-btn" disabled>Detect Students</button>
+
+        <div id="status" style="margin-top:10px;font-size:14px;color:#64748b;">
+          Please upload a photo first
+        </div>
+
+        <canvas id="canvas"></canvas>
+      </section>
+    </div>
+
+    <section class="card" id="studentCard">
+      <div class="label">Student Attendance List</div>
+      <div id="studentTableContainer">
+        <p style="font-size:14px;color:#6b7280;margin-top:6px;">
+          No reservations found for this room.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <div id="modalOverlay" onclick="hideModal()">
+    <div id="modalContent">
+      <canvas id="enlargedCanvas"></canvas>
+    </div>
+  </div>
+
+<script>
+  function getRoomFromQuery() {
+    const p = new URLSearchParams(location.search);
+    let room = p.get("room") || "Room 101";
+    if (!/^Room\s+/i.test(room)) {
+      room = "Room " + room;
+    }
+    return room;
+  }
+
+  function formatNameFromEmail(email) {
+    if (!email) return "";
+    const namePart = email.split("@")[0];
+    return namePart
+      .split(/[.\-_]/)
+      .filter(Boolean)
+      .map(p => p.charAt(0).toUpperCase() + p.slice(1))
+      .join(" ");
+  }
+
+  document.getElementById("roomTitle").innerText = getRoomFromQuery();
+
+  const TOTAL_SEATS = 49;
+  let currentStudents = [];
+
+  const dateSelect = document.getElementById("dateSelect");
+  let selectedDate = null;
+
+  function formatDateISO(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  function getWeekdaysThisWeek() {
+    const today = new Date();
+    const day = today.getDay();
+    const diffToMonday = (day + 6) % 7;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - diffToMonday);
+
+    const names = ["Mon","Tue","Wed","Thu","Fri"];
+    const list = [];
+
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      list.push({
+        label: `${names[i]} (${formatDateISO(d)})`,
+        value: formatDateISO(d),
+        weekdayName: names[i]
+      });
+    }
+    return list;
+  }
+
+  function initDateSelect() {
+    const weekdays = getWeekdaysThisWeek();
+    dateSelect.innerHTML = "";
+
+    let defaultIndex = 0;
+    weekdays.forEach((item, idx) => {
+      const opt = document.createElement("option");
+      opt.value = item.value;
+      opt.textContent = item.label;
+      if (idx === defaultIndex) opt.selected = true;
+      dateSelect.appendChild(opt);
+    });
+
+    selectedDate = weekdays[defaultIndex]?.value || null;
+
+    dateSelect.addEventListener("change", () => {
+      selectedDate = dateSelect.value;
+      loadAttendanceCode();
+      updateRoomData();
+      updateTrendChart();
+    });
+  }
+
+  async function fetchRoomData() {
+    const roomName = getRoomFromQuery();
+
+    let reserved = 0;
+    let onTime = 0;
+    let late = 0;
+    let absent = 0;
+    const students = [];
+
+    try {
+      let query = db
+        .collection("reservations")
+        .where("room", "==", roomName);
+
+      if (selectedDate) {
+        query = query.where("date", "==", selectedDate);
+      }
+
+      const snapshot = await query.get();
+
+      const nameLookups = [];
+
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const seatsArr = Array.isArray(data.seats)
+          ? data.seats
+          : (typeof data.seat === "string"
+              ? data.seat.split(",").map(s => s.trim()).filter(Boolean)
+              : []);
+
+        const status = data.status || "pending";
+        const email  = data.email || "";
+        let   name   = data.name || "";
+
+        reserved += 1;
+        if (status === "on_time")      onTime += 1;
+        else if (status === "late")    late  += 1;
+        else if (status === "absent")  absent += 1;
+
+        const student = {
+          id: doc.id,
+          email,
+          name,
+          seats: seatsArr,
+          status
+        };
+        students.push(student);
+
+        if (!name && email) {
+          const p = db.collection("users")
+            .where("email", "==", email)
+            .limit(1)
+            .get()
+            .then(qs => {
+              if (!qs.empty) {
+                const u = qs.docs[0].data();
+                student.name = u.name || student.name || "";
+              }
+            })
+            .catch(err => {
+              console.error("Failed to load user name for", email, err);
+            });
+          nameLookups.push(p);
+        }
+      });
+
+      if (nameLookups.length) {
+        await Promise.all(nameLookups);
+      }
+    } catch (e) {
+      console.error("Failed to load reservations for room stats:", e);
+    }
+
+    const empty = Math.max(0, TOTAL_SEATS - reserved);
+    currentStudents = students;
+
+    return { empty, reserved, onTime, late, absent, students };
+  }
+
+  async function updateRoomData() {
+    const { empty, reserved, onTime, late, absent, students } = await fetchRoomData();
+
+    const totalSeats = TOTAL_SEATS;
+    const occupancy = totalSeats === 0 ? 0 : (reserved / totalSeats * 100);
+
+    document.getElementById("emptyCount").textContent = empty;
+    document.getElementById("onTimeCount").textContent = onTime;
+    document.getElementById("lateCount").textContent = late;
+    document.getElementById("totalCount").textContent = totalSeats;
+
+    document.getElementById("emptyCountLegend").textContent = empty;
+    document.getElementById("onTimeCountLegend").textContent = onTime;
+    document.getElementById("lateCountLegend").textContent = late;
+
+    document.getElementById("occupancyPct").textContent = occupancy.toFixed(1) + "%";
+    document.getElementById("absencePct").textContent = absent;
+
+    drawDonutChart([empty, onTime, late]);
+    renderStudentTable(students);
+  }
+
+  let donutChart = null;
+  function drawDonutChart(values) {
+    if (donutChart) donutChart.destroy();
+
+    donutChart = new Chart(document.getElementById("donut"), {
+      type: "doughnut",
+      data: {
+        labels: ["Empty", "On-time", "Late"],
+        datasets: [{
+          data: values,
+          backgroundColor: ["#e5e7eb", "#22c55e", "#f59e0b"]
+        }]
+      },
+      options: { plugins: { legend: { display: false } } }
+    });
+  }
+
+  let lineChart = null;
+  function drawLineChart(weekdayLabels, occupancyList) {
+    const ctx = document.getElementById("line");
+
+    if (lineChart) lineChart.destroy();
+
+    lineChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: weekdayLabels,
+        datasets: [{
+          data: occupancyList,
+          borderColor: "#2563eb",
+          fill: false,
+          tension: 0.3
+        }]
+      },
+      options: {
+        scales: {
+          y: { beginAtZero: true, max: 100 }
+        }
+      }
+    });
+  }
+
+  async function updateTrendChart() {
+    const roomName = getRoomFromQuery();
+    const weekdays = getWeekdaysThisWeek();
+    const labels = weekdays.map(w => w.weekdayName);
+    const occupancyList = new Array(weekdays.length).fill(0);
+
+    await Promise.all(
+      weekdays.map(async (day, idx) => {
+        let reservedSeats = 0;
+        try {
+          const snapshot = await db.collection("reservations")
+            .where("room", "==", roomName)
+            .where("date", "==", day.value)
+            .get();
+
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            if (Array.isArray(data.seats)) {
+              reservedSeats += data.seats.length;
+            } else if (typeof data.seat === "string" && data.seat.trim()) {
+              reservedSeats += data.seat.split(",").map(s => s.trim()).filter(Boolean).length;
+            } else {
+              reservedSeats += 1;
+            }
+          });
+        } catch (e) {
+          console.error("Failed to load weekly occupancy:", e);
+        }
+
+        const occ = TOTAL_SEATS === 0 ? 0 : (reservedSeats / TOTAL_SEATS * 100);
+        occupancyList[idx] = Number(occ.toFixed(1));
+      })
+    );
+
+    drawLineChart(labels, occupancyList);
+  }
+
+  function showEnlarged(chartType) {
+    const canvas = document.getElementById(chartType);
+    const enlarged = document.getElementById("enlargedCanvas");
+    const ctx = enlarged.getContext("2d");
+
+    enlarged.width = canvas.width;
+    enlarged.height = canvas.height;
+
+    ctx.drawImage(canvas, 0, 0);
+
+    document.getElementById("modalOverlay").style.display = "flex";
+  }
+
+  document.getElementById("donut").onclick = () => showEnlarged("donut");
+  document.getElementById("line").onclick = () => showEnlarged("line");
+  function hideModal() {
+    document.getElementById("modalOverlay").style.display = "none";
+  }
+
+  document.getElementById("toggleTheme").addEventListener("change", function () {
+    document.body.classList.toggle("night-mode", this.checked);
+  });
+
+  document.getElementById("refreshButton").onclick = async () => {
+    await updateRoomData();
+    await updateTrendChart();
+  };
+
+  let model = null;
+  let img = null;
+  let canvasEl = document.getElementById("canvas");
+  let ctx2 = canvasEl.getContext("2d");
+
+  const uploadArea = document.getElementById("uploadArea");
+  const fileInput = document.getElementById("imgUpload");
+  const fileName = document.getElementById("fileName");
+
+  uploadArea.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", e => {
+    if (e.target.files.length) handleFile(e.target.files[0]);
+  });
+
+  function handleFile(file) {
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file");
+      return;
+    }
+
+    fileName.textContent = file.name;
+
+    const url = URL.createObjectURL(file);
+    img = new Image();
+    img.onload = () => {
+      canvasEl.width = img.naturalWidth;
+      canvasEl.height = img.naturalHeight;
+      ctx2.drawImage(img, 0, 0);
+
+      document.getElementById("status").textContent =
+        'Photo loaded – ready to detect';
+      document.getElementById("detectBtn").disabled = false;
+    };
+    img.src = url;
+  }
+
+  async function loadModel() {
+    document.getElementById("status").textContent = "Loading AI model...";
+    model = await cocoSsd.load("lite_mobilenet_v2");
+    document.getElementById("status").textContent = "Model ready";
+  }
+
+  async function detect() {
+    if (!img) return;
+    if (!model) await loadModel();
+
+    document.getElementById("detectBtn").textContent = "Detecting...";
+    document.getElementById("detectBtn").disabled = true;
+
+    const predictions = await model.detect(img);
+
+    const persons = predictions.filter(p => p.class === "person" && p.score > 0.5);
+
+    ctx2.clearRect(0,0,canvasEl.width,canvasEl.height);
+    ctx2.drawImage(img,0,0);
+    ctx2.strokeStyle = "#dc2626";
+    ctx2.lineWidth = 6;
+    ctx2.font = "24px bold Arial";
+    ctx2.fillStyle = "#dc2626";
+
+    persons.forEach((p,i) => {
+      const [x,y,w,h] = p.bbox;
+      ctx2.strokeRect(x,y,w,h);
+      ctx2.fillText(i+1, x+10, y+30);
+    });
+
+    document.getElementById("status").textContent =
+      "Detected: " + persons.length + " student(s)";
+
+    document.getElementById("detectBtn").textContent = "Detect Again";
+    document.getElementById("detectBtn").disabled = false;
+  }
+
+  document.getElementById("detectBtn").onclick = detect;
+
+  async function loadAttendanceCode() {
+    const roomName = getRoomFromQuery();
+    const span = document.getElementById("currentCode");
+
+    if (!selectedDate) {
+      span.textContent = "None";
+      return;
+    }
+
+    try {
+      const docRef = db.collection("attendanceSessions").doc(roomName);
+      const docSnap = await docRef.get();
+      if (docSnap.exists) {
+        const data = docSnap.data();
+        const codes = data.codesByDate || {};
+        span.textContent = codes[selectedDate] || "None";
+      } else {
+        span.textContent = "None";
+      }
+    } catch (e) {
+      console.error("Failed to load attendance code:", e);
+      span.textContent = "Error";
+    }
+  }
+
+  async function saveAttendanceCode() {
+    const roomName = getRoomFromQuery();
+    const input = document.getElementById("attendanceCodeInput");
+    const code = (input.value || "").trim();
+    if (!code) {
+      alert("Please enter a code.");
+      return;
+    }
+    if (!selectedDate) {
+      alert("Please select a date first.");
+      return;
+    }
+    try {
+      const docRef = db.collection("attendanceSessions").doc(roomName);
+      const updateData = {
+        room: roomName,
+        active: true,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        codesByDate: {
+          [selectedDate]: code  
+        }
+      };
+
+      await docRef.set(updateData, { merge: true });
+      document.getElementById("currentCode").textContent = code;
+      input.value = "";
+      alert("Attendance code saved for " + selectedDate + ".");
+    } catch (e) {
+      console.error("Failed to save attendance code:", e);
+      alert("Failed to save code.");
+    }
+  }
+
+  document.getElementById("saveCodeBtn").addEventListener("click", saveAttendanceCode);
+
+  function renderStudentTable(students) {
+    const container = document.getElementById("studentTableContainer");
+
+    if (!students.length) {
+      container.innerHTML = '<p style="font-size:14px;color:#6b7280;margin-top:6px;">No reservations found for this room on this date.</p>';
+      return;
+    }
+
+    let html = `
+      <table class="student-table">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Name</th>
+            <th>Seat</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+    students.forEach(s => {
+      const seatLabel = (s.seats && s.seats.length)
+        ? s.seats.join(", ")
+        : "-";
+
+      const displayName =
+        s.name ||
+        formatNameFromEmail(s.email) ||
+        "-";
+
+      html += `
+        <tr>
+          <td>${s.email || "-"}</td>
+          <td>${displayName}</td>
+          <td>${seatLabel}</td>
+          <td>
+            <select data-id="${s.id}">
+              <option value="pending" ${s.status==="pending"?"selected":""}>Pending</option>
+              <option value="on_time" ${s.status==="on_time"?"selected":""}>On-time</option>
+              <option value="late" ${s.status==="late"?"selected":""}>Late</option>
+              <option value="absent" ${s.status==="absent"?"selected":""}>Absent</option>
+            </select>
+          </td>
+        </tr>
+      `;
+    });
+
+    html += `
+        </tbody>
+      </table>
+      <div class="student-table-footer">
+        <small>Changing a student's status here will update the statistics above.</small>
+        <button id="saveAllBtn">Save All Changes</button>
+      </div>
+    `;
+
+    container.innerHTML = html;
+
+    const saveAllBtn = document.getElementById("saveAllBtn");
+    saveAllBtn.onclick = saveAllStatuses;
+  }
+
+  async function saveAllStatuses() {
+    const container = document.getElementById("studentTableContainer");
+    const selects = container.querySelectorAll("select[data-id]");
+    if (!selects.length) return;
+
+    const updates = [];
+    selects.forEach(sel => {
+      const id = sel.getAttribute("data-id");
+      const status = sel.value;
+      updates.push(
+        db.collection("reservations").doc(id).update({ status })
+      );
+    });
+
+    try {
+      await Promise.all(updates);
+      await updateRoomData();
+      await updateTrendChart();
+      alert("All attendance statuses have been saved.");
+    } catch (err) {
+      console.error("Failed to save all statuses:", err);
+      alert("Failed to save some statuses. Please try again.");
+    }
+  }
+
+  async function initPage() {
+    initDateSelect();
+    await loadAttendanceCode();
+    await updateRoomData();
+    await updateTrendChart();
+  }
+
+  initPage();
+</script>
+
+</body>
+</html>

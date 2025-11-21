@@ -1,0 +1,104 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Select Floor - SmartSeat</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      font-family: Arial, sans-serif;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      width: 420px;
+      text-align: center;
+    }
+
+    h2 {
+      font-size: 28px;
+      color: #2f88c5;
+      margin-bottom: 30px;
+      font-weight: bold;
+    }
+
+    .floor-btn {
+      width: 100%;
+      padding: 14px;
+      border: 2px solid #2f88c5;
+      background: white;
+      border-radius: 12px;
+      font-size: 16px;
+      color: #2f88c5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      margin-bottom: 16px;
+      transition: 0.2s;
+    }
+
+    .floor-btn:hover {
+      background: linear-gradient(90deg, #2f88c5, #1a6fb3);
+      color: white;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+    }
+
+    span.arrow {
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .back {
+      margin-top: 25px;
+      padding: 12px;
+      width: 100%;
+      background: #333;
+      color: white;
+      border-radius: 10px;
+      cursor: pointer;
+      border: none;
+      font-size: 15px;
+    }
+
+    .back:hover { background: #000; }
+
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h2 id="titleText">Select Floor</h2>
+
+    <div id="floorList"></div>
+
+    <button class="back" onclick="history.back()">Back</button>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const building = params.get("building");
+
+    document.getElementById("titleText").textContent = `Building ${building} - Select Floor`;
+
+    const floors = ["Floor 1", "Floor 2", "Floor 3", "Floor 4"];
+    const container = document.getElementById("floorList");
+
+    floors.forEach((floorName, idx) => {
+      const btn = document.createElement("button");
+      btn.className = "floor-btn";
+      btn.innerHTML = `${floorName} <span class="arrow">›</span>`;
+      btn.onclick = () => {
+        const floorNumber = idx + 1;
+        window.location = `building_rooms.html?building=${building}&floor=${floorNumber}`;
+      };
+      container.appendChild(btn);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Teacher Dashboard - SmartSeat</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      font-family: Arial, sans-serif;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      width: 420px;
+      text-align: center;
+    }
+
+    h2 {
+      font-size: 28px;
+      color: #2f88c5;
+      margin-bottom: 30px;
+      font-weight: bold;
+    }
+
+    .building-btn {
+      width: 100%;
+      padding: 14px;
+      border: 2px solid #2f88c5;
+      background: white;
+      border-radius: 12px;
+      font-size: 16px;
+      color: #2f88c5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      margin-bottom: 16px;
+      transition: 0.2s;
+    }
+
+    .building-btn:hover {
+      background: linear-gradient(90deg, #2f88c5, #1a6fb3);
+      color: white;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+    }
+
+    span.arrow {
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h2>Select Building</h2>
+
+    <button class="building-btn" onclick="goToRooms('A')">
+      🏢 Building A <span class="arrow">›</span>
+    </button>
+
+    <button class="building-btn" onclick="goToRooms('B')">
+      🏢 Building B <span class="arrow">›</span>
+    </button>
+
+    <button class="building-btn" onclick="goToRooms('C')">
+      🏢 Building C <span class="arrow">›</span>
+    </button>
+  </div>
+
+  <script>
+    function goToRooms(building) {
+      window.location = `teacher_floor.html?building=${building}`;
+
+    }
+  </script>
+</body>
+</html>

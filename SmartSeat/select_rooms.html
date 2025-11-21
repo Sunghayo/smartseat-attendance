@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <script src="firebase.js"></script>
+  <title>Rooms - SmartSeat</title>
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #fff;
+      font-family: Arial, sans-serif;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      width: 420px;
+      text-align: center;
+    }
+
+    h2 {
+      font-size: 26px;
+      margin-bottom: 10px;
+      color: #2f88c5;
+    }
+
+    .date-row {
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+    .date-row label {
+      margin-right: 6px;
+      font-weight: bold;
+      color: #444;
+    }
+    .date-row select {
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+      min-width: 200px;
+    }
+
+    .room-btn {
+      width: 100%;
+      padding: 14px;
+      border: 2px solid #2f88c5;
+      border-radius: 12px;
+      background: white;
+      font-size: 16px;
+      color: #2f88c5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      cursor: pointer;
+      transition: 0.25s;
+    }
+
+    .room-btn:hover {
+      background: linear-gradient(90deg, #2f88c5, #1a6fb3);
+      color: white;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+    }
+
+    .room-btn:hover span {
+      color: white !important;
+    }
+
+    .room-btn:hover .wcBadge {
+      background: white !important;
+      color: #1a6fb3 !important;
+    }
+
+    .wcBadge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: #d9eaff;
+      color: #2f88c5;
+      font-size: 14px;
+      margin-right: 6px;
+      transition: 0.25s;
+    }
+
+    .room-btn:hover .wcBadge {
+      background: white;
+      color: #1a6fb3;
+    }
+
+    .back {
+      margin-top: 25px;
+      padding: 12px;
+      width: 100%;
+      background: #333;
+      color: white;
+      border-radius: 10px;
+      cursor: pointer;
+      border: none;
+      font-size: 15px;
+      transition: 0.2s;
+    }
+
+    .back:hover {
+      background: #000;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+    <h2 id="buildingTitle">Rooms</h2>
+
+    <div class="date-row">
+      <label for="dateSelect">Select date (Mon–Fri of this week):</label>
+      <select id="dateSelect"></select>
+    </div>
+
+    <div id="roomList"></div>
+    <button class="back" onclick="history.back()">Back</button>
+  </div>
+
+  <script>
+    const wheelchairRooms = {
+      A: ["A101", "A105"],
+      B: ["B205", "B301"],
+      C: ["C102", "C308"]
+    };
+
+    function isWheelchairFriendlyRoom(building, roomCode) {
+      return (wheelchairRooms[building] || []).includes(roomCode);
+    }
+
+    const userWantsWC = localStorage.getItem("pref2") === "true";
+
+    const params = new URLSearchParams(window.location.search);
+    const building = params.get("building");
+    const floor = params.get("floor");
+    const urlDate = params.get("date");   
+
+    document.getElementById("buildingTitle").textContent =
+      `Building ${building} - Floor ${floor}`;
+
+    const startRoom = floor * 100 + 1;
+    const rooms = Array.from({ length: 10 }, (_, i) =>
+      `Room ${building}${startRoom + i}`
+    );
+
+    const container = document.getElementById("roomList");
+
+    const dateSelect = document.getElementById("dateSelect");
+    let selectedDate = null;
+
+    function formatDateISO(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+
+    function getWeekdaysThisWeek(baseDateStr) {
+      let baseDate;
+      if (baseDateStr) {
+        baseDate = new Date(baseDateStr + "T00:00:00");
+      } else {
+        baseDate = new Date();
+      }
+
+      const day = baseDate.getDay();
+      const diffToMonday = (day + 6) % 7;
+      const monday = new Date(baseDate);
+      monday.setDate(baseDate.getDate() - diffToMonday);
+
+      const names = ["Mon","Tue","Wed","Thu","Fri"];
+      const list = [];
+
+      for (let i = 0; i < 5; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        list.push({
+          label: `${names[i]} (${formatDateISO(d)})`,
+          value: formatDateISO(d),
+          weekdayName: names[i]
+        });
+      }
+      return list;
+    }
+
+    function initDateSelect() {
+      const weekdays = getWeekdaysThisWeek(urlDate);
+      dateSelect.innerHTML = "";
+
+      let defaultIndex = 0;
+      if (urlDate) {
+        const foundIndex = weekdays.findIndex(w => w.value === urlDate);
+        if (foundIndex !== -1) {
+          defaultIndex = foundIndex;
+        }
+      }
+
+      weekdays.forEach((item, idx) => {
+        const opt = document.createElement("option");
+        opt.value = item.value;
+        opt.textContent = item.label;
+        if (idx === defaultIndex) opt.selected = true;
+        dateSelect.appendChild(opt);
+      });
+
+      selectedDate = weekdays[defaultIndex]?.value || null;
+    }
+
+    async function getRoomRemaining(roomName) {
+      const buildingName = "Building " + building;
+      const total = 49;
+
+      if (!selectedDate) {
+        return `${total}/${total}`;
+      }
+
+      try {
+        const snapshot = await db
+          .collection("reservations")
+          .where("building", "==", buildingName)
+          .where("floor", "==", Number(floor))
+          .where("room", "==", roomName)
+          .where("date", "==", selectedDate)
+          .get();
+
+        let occupied = [];
+
+        snapshot.forEach(doc => {
+          const data = doc.data();
+
+          if (Array.isArray(data.seats)) {
+            occupied.push(...data.seats);
+          } else if (typeof data.seat === "string") {
+            occupied.push(...data.seat.split(", "));
+          }
+        });
+
+        const remaining = total - occupied.length;
+        return `${remaining}/${total}`;
+      } catch (err) {
+        console.error("Failed to load room remaining:", err);
+        return `0/${total}`;
+      }
+    }
+
+    async function loadRooms() {
+      container.innerHTML = "";
+
+      for (const room of rooms) {
+        const roomCode = room.replace("Room ", "");
+        const hasWC = isWheelchairFriendlyRoom(building, roomCode);
+
+        const showIcon = hasWC && userWantsWC;
+        const iconHTML = showIcon ? `<span class='wcBadge'>♿︎</span>` : "";
+
+        const remainingText = await getRoomRemaining(room);
+
+        const btn = document.createElement("button");
+        btn.className = "room-btn";
+
+        btn.innerHTML = `
+          <span style="flex:1; text-align:left; padding-left:10px;">${room}</span>
+          <span style="flex:1; text-align:center; color:#1a6fb3; font-weight:bold;">
+            ${remainingText}
+          </span>
+          <span style="flex:1; text-align:right; padding-right:10px;">
+            ${iconHTML} ›
+          </span>
+        `;
+
+        btn.onclick = () =>
+          window.location =
+            `select_seat.html?building=${building}&floor=${floor}&room=${encodeURIComponent(room)}&date=${encodeURIComponent(selectedDate)}`;
+
+        container.appendChild(btn);
+      }
+    }
+
+    initDateSelect();
+    loadRooms();
+
+    dateSelect.addEventListener("change", () => {
+      selectedDate = dateSelect.value;
+      loadRooms();
+    });
+  </script>
+
+</body>
+</html>

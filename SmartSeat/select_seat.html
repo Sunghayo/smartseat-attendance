@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="firebase.js"></script>
+  <meta charset="UTF-8">
+  <title>Select Seat</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .container { width: 500px; text-align: center; }
+    h1 { color: #2f88c5; font-size: 36px; margin-bottom: 5px; }
+    h2 { color: #666; font-size: 18px; margin: 0 0 10px; }
+
+    .date-row {
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    .date-row label {
+      margin-right: 6px;
+      font-weight: bold;
+      color: #444;
+    }
+    .date-row select {
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+    }
+
+    .seat {
+      width: 40px; height: 40px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 6px; color: white; font-size: 13px;
+      cursor: pointer; transition: 0.1s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .seat:hover { transform: scale(1.05); }
+
+    #seatContainer { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+
+    .legend { margin-top: 15px; font-size: 14px; }
+    .legend span {
+      display: inline-block; width: 15px; height: 15px;
+      border: 1px solid #333; border-radius: 3px; margin-right: 5px;
+    }
+
+    #selectedSeats { margin-top: 10px; color: #2f88c5; font-weight: bold; }
+    button { width: 100%; padding: 12px; border-radius: 10px; border: none; margin-top: 12px; }
+    .reserve { background: #2f88c5; color: white; }
+    .reserve:hover { background: #1a6fb3; }
+
+    .back { background: #333; color: white; }
+    .back:hover { background: #111; }
+
+    .wheelchair[data-status="available"] { background: #f1c40f; }
+    .wheelchair[data-status="selected"] { background: #2f88c5; }
+  </style>
+</head>
+
+<body>
+<div class="container">
+  <h1 id="roomTitle"></h1>
+  <h2 id="floorTitle"></h2>
+
+  <div class="date-row">
+    <label for="dateSelect">Select date (Mon–Fri of this week):</label>
+    <select id="dateSelect"></select>
+  </div>
+
+  <div id="seatContainer"></div>
+
+  <div class="legend">
+    <span style="background:#2ecc71;"></span> Available
+    <span style="margin-left:15px;background:#2f88c5;"></span> Selected
+    <span style="margin-left:15px;background:#e74c3c;"></span> Occupied
+    <span style="margin-left:15px;background:#f1c40f;"></span> Wheelchair Only
+  </div>
+
+  <div id="selectedSeats">You selected: None</div>
+  <button class="reserve">Reserve Seat</button>
+  <button class="back" onclick="history.back()">Back</button>
+</div>
+
+<script>
+  const wheelchairRooms = {
+    A: ["A101", "A105"],
+    B: ["B205", "B301"],
+    C: ["C102", "C308"]
+  };
+
+  function isWheelchairFriendlyRoom(building, roomCode) {
+    return wheelchairRooms[building]?.includes(roomCode) || false;
+  }
+
+  const params = new URLSearchParams(location.search);
+  const buildingCode = params.get("building");
+  const floor = params.get("floor");
+  const roomName = params.get("room");
+  const urlDate = params.get("date");
+
+  document.getElementById("roomTitle").textContent = roomName;
+  document.getElementById("floorTitle").textContent = "Floor " + floor;
+
+  let wheelchairSeats = [];
+  const pureRoom = roomName.replace("Room ", "");
+
+  if (isWheelchairFriendlyRoom(buildingCode, pureRoom)) {
+    wheelchairSeats = ["E1", "E7", "F1"];
+  } else {
+    wheelchairSeats = [];
+  }
+
+  const seatContainer = document.getElementById("seatContainer");
+  const selectedSeats = document.getElementById("selectedSeats");
+  const shownAlert = new Set();
+
+  const dateSelect = document.getElementById("dateSelect");
+  let selectedDate = null;
+
+  function formatDateISO(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  function getWeekdaysThisWeek() {
+    const today = new Date();
+    const day = today.getDay();
+    const diffToMonday = (day + 6) % 7;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - diffToMonday);
+
+    const names = ["Mon","Tue","Wed","Thu","Fri"];
+    const list = [];
+
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      list.push({
+        label: `${names[i]} (${formatDateISO(d)})`,
+        value: formatDateISO(d),
+        weekdayName: names[i]
+      });
+    }
+    return list;
+  }
+
+  function initDateSelect() {
+    const weekdays = getWeekdaysThisWeek();
+    dateSelect.innerHTML = "";
+
+    let defaultIndex = 0;
+    if (urlDate) {
+      const foundIndex = weekdays.findIndex(w => w.value === urlDate);
+      if (foundIndex !== -1) {
+        defaultIndex = foundIndex;
+      }
+    }
+
+    weekdays.forEach((item, idx) => {
+      const opt = document.createElement("option");
+      opt.value = item.value;
+      opt.textContent = item.label;
+      if (idx === defaultIndex) opt.selected = true;
+      dateSelect.appendChild(opt);
+    });
+
+    selectedDate = weekdays[defaultIndex]?.value || null;
+  }
+
+  function createSeats(occupiedSeats = []) {
+    const rows = ["A","B","C","D","E","F","G"];
+    const cols = 7;
+    seatContainer.innerHTML = "";
+
+    for (let r of rows) {
+      const row = document.createElement("div");
+      row.style.display = "flex";
+      row.style.justifyContent = "center";
+      row.style.gap = "10px";
+
+      for (let c = 1; c <= cols; c++) {
+        const seatId = r + c;
+        const s = document.createElement("div");
+        s.className = "seat";
+        s.textContent = seatId;
+
+        if (wheelchairSeats.includes(seatId)) {
+          s.dataset.type = "wheelchair";
+          s.dataset.status = "available";
+          s.style.background = "#f1c40f";
+          s.onclick = () => {
+            if (!shownAlert.has(seatId)) {
+              alert("This seat is reserved for wheelchair users.");
+              shownAlert.add(seatId);
+            }
+            toggleSeat(s);
+          };
+
+        } else {
+          if (occupiedSeats.includes(seatId)) {
+            s.dataset.status = "occupied";
+            s.style.background = "#e74c3c";
+          } else {
+            s.dataset.status = "available";
+            s.style.background = "#2ecc71";
+          }
+          s.onclick = () => {
+            if (s.dataset.status === "occupied") return;
+            toggleSeat(s);
+          };
+        }
+
+        row.appendChild(s);
+      }
+      seatContainer.appendChild(row);
+    }
+  }
+
+  function toggleSeat(seatElement) {
+    const count = document.querySelectorAll('.seat[data-status="selected"]').length;
+
+    if (seatElement.dataset.status === "available" && count >= 1) {
+      alert("You can only select one seat.");
+      return;
+    }
+
+    if (seatElement.dataset.status === "available") {
+      seatElement.dataset.status = "selected";
+      seatElement.style.background = "#2f88c5";
+    } else if (seatElement.dataset.status === "selected") {
+      seatElement.dataset.status = "available";
+      seatElement.style.background =
+        seatElement.dataset.type === "wheelchair" ? "#f1c40f" : "#2ecc71";
+    }
+
+    updateSelectionText();
+  }
+
+  function updateSelectionText() {
+    const selected = [...document.querySelectorAll('.seat[data-status="selected"]')]
+      .map(s => s.textContent);
+    selectedSeats.textContent =
+      selected.length ? `You selected: ${selected.join(", ")}` : "You selected: None";
+  }
+
+  async function loadReservedSeats() {
+    if (!selectedDate) {
+      createSeats([]);
+      return;
+    }
+
+    const buildingName = "Building " + buildingCode;
+    try {
+      const snapshot = await db
+        .collection("reservations")
+        .where("building", "==", buildingName)
+        .where("floor", "==", Number(floor))
+        .where("room", "==", roomName)
+        .where("date", "==", selectedDate)
+        .get();
+
+      const occupied = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        let seatList = [];
+
+        if (Array.isArray(data.seats)) seatList = data.seats;
+        else if (typeof data.seat === "string") seatList = data.seat.split(", ");
+
+        occupied.push(...seatList);
+      });
+
+      createSeats(occupied);
+
+    } catch (err) {
+      console.error("Failed to load reserved seats:", err);
+      createSeats([]);
+    }
+  }
+
+  initDateSelect();
+  loadReservedSeats();
+
+  dateSelect.addEventListener("change", () => {
+    selectedDate = dateSelect.value;
+    loadReservedSeats();
+  });
+
+  document.querySelector(".reserve").addEventListener("click", async () => {
+    const selected = [...document.querySelectorAll('.seat[data-status="selected"]')]
+      .map(s => s.textContent);
+
+    if (selected.length >= 2) {
+      alert("You can only reserve one seat.");
+      return;
+    }
+
+    if (selected.length === 0) {
+      alert("Please select at least one seat before reserving.");
+      return;
+    }
+
+    if (!selectedDate) {
+      alert("Please select a date first.");
+      return;
+    }
+
+    const email = localStorage.getItem("loggedEmail");
+    if (!email) {
+      alert("Login session expired. Please login again.");
+      window.location = "login.html";
+      return;
+    }
+
+    const now = new Date();
+    const nowTime = now.toLocaleString();
+
+    const weekdayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    const reservationDateObj = new Date(selectedDate);
+    const weekdayName = weekdayNames[reservationDateObj.getDay()];
+
+    try {
+      await db.collection("reservations").add({
+        email,
+        seats: selected,
+        seat: selected.join(", "),
+        building: "Building " + buildingCode,
+        floor: Number(floor),
+        room: roomName,
+        time: nowTime,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        status: "pending",
+        date: selectedDate,
+        weekday: weekdayName
+      });
+
+      localStorage.setItem("latestReservation", JSON.stringify({
+        building: "Building " + buildingCode,
+        room: roomName,
+        seats: selected,
+        time: nowTime,
+        date: selectedDate,
+        weekday: weekdayName
+      }));
+
+      alert("Reservation successful!");
+      window.location = "reservation_status.html";
+
+    } catch (error) {
+      console.error("Failed to save reservation:", error);
+      alert("Failed to save reservation");
+    }
+  });
+</script>
+</body>
+</html>
