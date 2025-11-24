@@ -18,8 +18,6 @@
 - `date (YYYY-MM-DD)`
 - `weekday ("Mon", "Tue", etc.)`
 
-### Example (add your screenshot)
-
 <img width="645" height="737" alt="스크린샷 2025-11-21 22 47 13" src="https://github.com/user-attachments/assets/8ae2ee2a-76a1-468e-a864-107675ac3235" />
 
 ---
